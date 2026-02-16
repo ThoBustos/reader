@@ -47,11 +47,13 @@ export interface PaperNote {
 export type Theme = 'classic' | 'ink' | 'paper';
 export type Layout = 'sidebar-right' | 'sidebar-left' | 'focus';
 export type LLMProvider = 'gemini' | 'claude';
+export type GeminiModel = 'gemini-3-flash-preview' | 'gemini-3-pro-preview' | 'gemini-2.5-flash' | 'gemini-2.5-pro';
 
 export interface Settings {
   theme: Theme;
   layout: Layout;
   llmProvider: LLMProvider;
+  geminiModel: GeminiModel;
   vaultPath: string;
   geminiApiKey?: string;
   claudeApiKey?: string;

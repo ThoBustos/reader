@@ -22,11 +22,12 @@ export async function uploadPaper(pdfPath: string): Promise<string> {
 export async function askGemini(
   pdfBase64: string,
   question: string,
-  context?: { page?: number; selection?: string }
+  context?: { page?: number; selection?: string },
+  modelName: string = "gemini-3-flash-preview"
 ): Promise<ReadableStream<Uint8Array>> {
   if (!genAI) throw new Error("Gemini not initialized");
 
-  const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const model = genAI.getGenerativeModel({ model: modelName });
 
   let prompt = question;
 

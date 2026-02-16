@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
     if (settings.llmProvider === "gemini" && settings.geminiApiKey) {
       initGemini(settings.geminiApiKey);
       const pdfBase64 = await uploadPaper(paper.filePath);
-      stream = await askGemini(pdfBase64, message, context);
+      stream = await askGemini(pdfBase64, message, context, settings.geminiModel);
     } else if (settings.llmProvider === "claude" && settings.claudeApiKey) {
       initClaude(settings.claudeApiKey);
       const pdfText = await extractPdfText(paper.filePath);
@@ -68,8 +68,9 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Chat error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
     return NextResponse.json(
-      { error: "Failed to process chat message" },
+      { error: `Failed to process chat message: ${errorMessage}` },
       { status: 500 }
     );
   }

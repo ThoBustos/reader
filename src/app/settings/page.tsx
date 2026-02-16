@@ -22,7 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { useTheme } from "@/components/primitives/ThemeProvider";
 import { useLayout } from "@/components/primitives/LayoutProvider";
-import { Settings, Theme, Layout, LLMProvider } from "@/types";
+import { Settings, Theme, Layout, LLMProvider, GeminiModel } from "@/types";
 import {
   Palette,
   Layout as LayoutIcon,
@@ -46,6 +46,7 @@ export default function SettingsPage() {
   const [geminiApiKey, setGeminiApiKey] = useState("");
   const [claudeApiKey, setClaudeApiKey] = useState("");
   const [llmProvider, setLlmProvider] = useState<LLMProvider>("gemini");
+  const [geminiModel, setGeminiModel] = useState<GeminiModel>("gemini-3-flash-preview");
 
   // Load settings
   useEffect(() => {
@@ -55,6 +56,7 @@ export default function SettingsPage() {
         setSettings(data);
         setVaultPath(data.vaultPath || "");
         setLlmProvider(data.llmProvider || "gemini");
+        setGeminiModel(data.geminiModel || "gemini-3-flash-preview");
       })
       .catch(console.error);
   }, []);
@@ -66,6 +68,7 @@ export default function SettingsPage() {
         theme,
         layout,
         llmProvider,
+        geminiModel,
         vaultPath,
       };
 
@@ -202,7 +205,7 @@ export default function SettingsPage() {
                     <SelectContent>
                       <SelectItem value="gemini">
                         <div className="flex items-center gap-2">
-                          Gemini 2 Flash
+                          Gemini
                           <Badge variant="secondary" className="text-xs">
                             Recommended
                           </Badge>
@@ -217,6 +220,44 @@ export default function SettingsPage() {
                       : "Claude uses extracted text from the PDF."}
                   </p>
                 </div>
+
+                {llmProvider === "gemini" && (
+                  <div>
+                    <label className="text-sm font-medium text-[var(--text)]">
+                      Gemini Model
+                    </label>
+                    <Select
+                      value={geminiModel}
+                      onValueChange={(v) => setGeminiModel(v as GeminiModel)}
+                    >
+                      <SelectTrigger className="mt-1">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="gemini-3-flash-preview">
+                          <div className="flex items-center gap-2">
+                            Gemini 3 Flash
+                            <Badge variant="secondary" className="text-xs">
+                              New
+                            </Badge>
+                          </div>
+                        </SelectItem>
+                        <SelectItem value="gemini-3-pro-preview">
+                          Gemini 3 Pro
+                        </SelectItem>
+                        <SelectItem value="gemini-2.5-flash">
+                          Gemini 2.5 Flash
+                        </SelectItem>
+                        <SelectItem value="gemini-2.5-pro">
+                          Gemini 2.5 Pro
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="mt-1 text-xs text-[var(--muted)]">
+                      Flash = faster & cheaper. Pro = more capable.
+                    </p>
+                  </div>
+                )}
 
                 <Separator />
 

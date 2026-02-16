@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS: Settings = {
   theme: 'paper',
   layout: 'sidebar-right',
   llmProvider: 'gemini',
+  geminiModel: 'gemini-3-flash-preview',
   vaultPath: '',
   geminiApiKey: '',
   claudeApiKey: '',

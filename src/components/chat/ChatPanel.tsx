@@ -3,15 +3,17 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { ChatMessage, ContextMode } from "@/types";
 import { QUICK_PROMPTS } from "@/lib/llm/prompts";
 import { useHotkeys, SHORTCUTS } from "@/components/primitives/useHotkeys";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Send,
   Sparkles,
   Copy,
+  Check,
   FileText,
   BookOpen,
   MousePointer2,
@@ -35,8 +37,10 @@ export function ChatPanel({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [contextMode, setContextMode] = useState<ContextMode>("full-document");
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Load chat history on mount
   useEffect(() => {
@@ -52,9 +56,7 @@ export function ChatPanel({
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   // Update context mode when text is selected
@@ -74,6 +76,13 @@ export function ChatPanel({
     const currentIndex = modes.indexOf(contextMode);
     setContextMode(modes[(currentIndex + 1) % modes.length]);
   });
+
+  const copyToClipboard = async (content: string, messageId: string) => {
+    await navigator.clipboard.writeText(content);
+    setCopiedId(messageId);
+    setTimeout(() => setCopiedId(null), 2000);
+    onCopyToNotes?.(content);
+  };
 
   const sendMessage = async (messageText: string = input) => {
     if (!messageText.trim() || isLoading) return;
@@ -173,9 +182,9 @@ export function ChatPanel({
   };
 
   return (
-    <div className="flex h-full flex-col bg-[var(--surface)] border-l border-[var(--border)]">
+    <div className="flex h-full flex-col bg-[var(--surface)]">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
+      <div className="shrink-0 flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-[var(--accent)]" />
           <span className="font-medium text-[var(--text)]">AI Assistant</span>
@@ -199,7 +208,7 @@ export function ChatPanel({
       </div>
 
       {/* Quick prompts */}
-      <div className="flex gap-2 overflow-x-auto border-b border-[var(--border)] px-4 py-2">
+      <div className="shrink-0 flex gap-2 overflow-x-auto border-b border-[var(--border)] px-4 py-2">
         {Object.entries(QUICK_PROMPTS)
           .slice(0, 4)
           .map(([key, prompt]) => (
@@ -216,8 +225,11 @@ export function ChatPanel({
           ))}
       </div>
 
-      {/* Messages */}
-      <ScrollArea className="flex-1 px-4" ref={scrollRef}>
+      {/* Messages - scrollable area */}
+      <div
+        ref={scrollContainerRef}
+        className="flex-1 overflow-y-auto px-4"
+      >
         <div className="space-y-4 py-4">
           {messages.length === 0 && (
             <div className="text-center text-sm text-[var(--muted)]">
@@ -231,7 +243,7 @@ export function ChatPanel({
               className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                className={`max-w-[90%] rounded-lg px-3 py-2 ${
                   message.role === "user"
                     ? "bg-[var(--primary)] text-white"
                     : "bg-[var(--background)] text-[var(--text)]"
@@ -243,19 +255,77 @@ export function ChatPanel({
                     {message.context.selection.length > 100 ? "..." : ""}&quot;
                   </div>
                 )}
-                <div className="whitespace-pre-wrap">{message.content}</div>
+                {message.role === "assistant" ? (
+                  <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        // Custom styling for markdown elements
+                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                        ul: ({ children }) => <ul className="mb-2 ml-4 list-disc space-y-1">{children}</ul>,
+                        ol: ({ children }) => <ol className="mb-2 ml-4 list-decimal space-y-1">{children}</ol>,
+                        li: ({ children }) => <li className="text-sm">{children}</li>,
+                        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                        em: ({ children }) => <em className="italic">{children}</em>,
+                        code: ({ className, children, ...props }) => {
+                          const isInline = !className;
+                          return isInline ? (
+                            <code className="rounded bg-[var(--surface)] px-1 py-0.5 text-xs font-mono" {...props}>
+                              {children}
+                            </code>
+                          ) : (
+                            <code className={`block rounded bg-[var(--surface)] p-2 text-xs font-mono overflow-x-auto ${className}`} {...props}>
+                              {children}
+                            </code>
+                          );
+                        },
+                        pre: ({ children }) => <pre className="mb-2 overflow-x-auto">{children}</pre>,
+                        blockquote: ({ children }) => (
+                          <blockquote className="border-l-2 border-[var(--accent)] pl-3 italic opacity-80">
+                            {children}
+                          </blockquote>
+                        ),
+                        h1: ({ children }) => <h1 className="text-base font-bold mb-2">{children}</h1>,
+                        h2: ({ children }) => <h2 className="text-sm font-bold mb-2">{children}</h2>,
+                        h3: ({ children }) => <h3 className="text-sm font-semibold mb-1">{children}</h3>,
+                        a: ({ href, children }) => (
+                          <a href={href} target="_blank" rel="noopener noreferrer" className="text-[var(--primary)] underline">
+                            {children}
+                          </a>
+                        ),
+                        table: ({ children }) => (
+                          <div className="overflow-x-auto mb-2">
+                            <table className="min-w-full text-xs border-collapse">{children}</table>
+                          </div>
+                        ),
+                        th: ({ children }) => <th className="border border-[var(--border)] px-2 py-1 bg-[var(--surface)] font-semibold">{children}</th>,
+                        td: ({ children }) => <td className="border border-[var(--border)] px-2 py-1">{children}</td>,
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+                )}
                 {message.role === "assistant" && message.content && (
                   <Button
                     variant="ghost"
                     size="sm"
                     className="mt-2 h-6 gap-1 text-xs opacity-50 hover:opacity-100"
-                    onClick={() => {
-                      navigator.clipboard.writeText(message.content);
-                      onCopyToNotes?.(message.content);
-                    }}
+                    onClick={() => copyToClipboard(message.content, message.id)}
                   >
-                    <Copy className="h-3 w-3" />
-                    Copy
+                    {copiedId === message.id ? (
+                      <>
+                        <Check className="h-3 w-3" />
+                        Copied
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="h-3 w-3" />
+                        Copy
+                      </>
+                    )}
                   </Button>
                 )}
               </div>
@@ -268,11 +338,12 @@ export function ChatPanel({
               </div>
             </div>
           )}
+          <div ref={messagesEndRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Input */}
-      <div className="border-t border-[var(--border)] p-4">
+      <div className="shrink-0 border-t border-[var(--border)] p-4">
         {selectedText && contextMode === "selection" && (
           <div className="mb-2 rounded bg-[var(--background)] p-2 text-xs text-[var(--muted)]">
             <span className="font-medium">Selected:</span> &quot;

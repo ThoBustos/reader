@@ -120,8 +120,9 @@ export default function ReaderPage({ params }: ReaderPageProps) {
 
   return (
     <AppShell>
-      {/* Header */}
-      <div className="flex h-14 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4">
+      <div className="flex h-full flex-col">
+        {/* Header */}
+        <div className="shrink-0 flex h-14 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4">
         <div className="flex items-center gap-4">
           <Link href="/">
             <Button variant="ghost" size="sm" className="gap-2">
@@ -181,8 +182,8 @@ export default function ReaderPage({ params }: ReaderPageProps) {
         </div>
       </div>
 
-      {/* Main content */}
-      <div className="flex h-[calc(100vh-3.5rem-3.5rem)]">
+        {/* Main content */}
+        <div className="flex flex-1 min-h-0">
         {/* Sidebar (left or right based on layout) */}
         {!sidebarCollapsed && isLeft && (
           <div className={`flex flex-col ${sidebarWidth} shrink-0`}>
@@ -291,9 +292,10 @@ export default function ReaderPage({ params }: ReaderPageProps) {
             </div>
           </div>
         )}
-      </div>
+        </div>
 
-      <CommandPalette />
+        <CommandPalette />
+      </div>
     </AppShell>
   );
 }
