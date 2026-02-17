@@ -12,8 +12,8 @@ export async function uploadPaper(pdfPath: string): Promise<string> {
   if (!genAI) throw new Error("Gemini not initialized");
 
   // Read the PDF file and convert to base64
-  const absolutePath = path.join(process.cwd(), "public", pdfPath);
-  const pdfBuffer = fs.readFileSync(absolutePath);
+  // pdfPath is already an absolute path from the vault
+  const pdfBuffer = fs.readFileSync(pdfPath);
   const base64Data = pdfBuffer.toString("base64");
 
   return base64Data;

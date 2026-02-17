@@ -5,8 +5,6 @@ import { saveChatMessage, getChatSession } from "@/lib/store/chat";
 import { initGemini, askGemini, uploadPaper } from "@/lib/llm/gemini";
 import { initClaude, askClaude } from "@/lib/llm/claude";
 import { v4 as uuidv4 } from "uuid";
-import fs from "fs";
-import path from "path";
 
 // Simple PDF text extraction (fallback for Claude)
 async function extractPdfText(filePath: string): Promise<string> {
@@ -46,11 +44,11 @@ export async function POST(request: NextRequest) {
 
     if (settings.llmProvider === "gemini" && settings.geminiApiKey) {
       initGemini(settings.geminiApiKey);
-      const pdfBase64 = await uploadPaper(paper.filePath);
+      const pdfBase64 = await uploadPaper(paper.pdfPath);
       stream = await askGemini(pdfBase64, message, context, settings.geminiModel);
     } else if (settings.llmProvider === "claude" && settings.claudeApiKey) {
       initClaude(settings.claudeApiKey);
-      const pdfText = await extractPdfText(paper.filePath);
+      const pdfText = await extractPdfText(paper.pdfPath);
       stream = await askClaude(pdfText, message, context);
     } else {
       return NextResponse.json(
@@ -59,8 +57,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Create a transform stream that collects the response for saving
+    let fullResponse = "";
+    const transformStream = new TransformStream({
+      transform(chunk, controller) {
+        const text = new TextDecoder().decode(chunk);
+        fullResponse += text;
+        controller.enqueue(chunk);
+      },
+      flush() {
+        // Save assistant message when stream completes
+        if (fullResponse) {
+          saveChatMessage(paperId, {
+            id: uuidv4(),
+            role: "assistant",
+            content: fullResponse,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      },
+    });
+
+    // Pipe through transform to collect and save
+    const responseStream = stream.pipeThrough(transformStream);
+
     // Return streaming response
-    return new NextResponse(stream, {
+    return new NextResponse(responseStream, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
         "Transfer-Encoding": "chunked",

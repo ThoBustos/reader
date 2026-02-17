@@ -1,145 +1,177 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
-import { PaperNote } from "@/types";
+import { Question, Highlight } from "@/types";
 import { useHotkeys, SHORTCUTS } from "@/components/primitives/useHotkeys";
 import {
   FileText,
   Plus,
-  Save,
   Check,
   X,
-  Tag,
-  BookOpen,
+  Lightbulb,
+  HelpCircle,
+  Quote,
+  StickyNote,
   Loader2,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
-import { v4 as uuidv4 } from "uuid";
 
 interface NotesPanelProps {
   paperId: string;
   currentPage: number;
-  currentPass: 1 | 2 | 3;
   selectedText?: string;
+}
+
+interface SidecarNotes {
+  summary: string;
+  insights: string[];
+  questions: Question[];
+  highlights: Highlight[];
+  notes: string;
 }
 
 export function NotesPanel({
   paperId,
   currentPage,
-  currentPass,
   selectedText,
 }: NotesPanelProps) {
-  const [notes, setNotes] = useState<PaperNote[]>([]);
-  const [newNote, setNewNote] = useState("");
-  const [tagInput, setTagInput] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<"idle" | "saved" | "error">("idle");
+  const [data, setData] = useState<SidecarNotes>({
+    summary: "",
+    insights: [],
+    questions: [],
+    highlights: [],
+    notes: "",
+  });
+  const [loading, setLoading] = useState(true);
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(
+    new Set(["insights", "questions", "highlights", "notes"])
+  );
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [newItem, setNewItem] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // Load notes on mount
   useEffect(() => {
+    setLoading(true);
     fetch(`/api/notes?paperId=${paperId}`)
       .then((res) => res.json())
-      .then((data) => {
-        if (data.notes) {
-          setNotes(data.notes);
-        }
+      .then((result) => {
+        setData({
+          summary: result.summary || "",
+          insights: result.insights || [],
+          questions: result.questions || [],
+          highlights: result.highlights || [],
+          notes: result.notes || "",
+        });
+        setLoading(false);
       })
-      .catch(console.error);
+      .catch((err) => {
+        console.error("Failed to load notes:", err);
+        setLoading(false);
+      });
   }, [paperId]);
 
-  // Pre-fill note with selected text
+  // Pre-fill with selected text
   useEffect(() => {
     if (selectedText) {
-      setNewNote(`> "${selectedText}"\n\n`);
+      setNewItem(`"${selectedText}"`);
+      setEditingField("highlight");
     }
   }, [selectedText]);
 
   // Keyboard shortcuts
   useHotkeys(SHORTCUTS.newNote, () => {
-    const textarea = document.querySelector(
-      'textarea[placeholder*="note"]'
-    ) as HTMLTextAreaElement;
-    textarea?.focus();
+    setEditingField("note");
   });
 
-  const addTag = () => {
-    const tag = tagInput.trim().toLowerCase();
-    if (tag && !tags.includes(tag)) {
-      setTags([...tags, tag]);
-      setTagInput("");
+  const toggleSection = (section: string) => {
+    const newExpanded = new Set(expandedSections);
+    if (newExpanded.has(section)) {
+      newExpanded.delete(section);
+    } else {
+      newExpanded.add(section);
     }
+    setExpandedSections(newExpanded);
   };
 
-  const removeTag = (tagToRemove: string) => {
-    setTags(tags.filter((t) => t !== tagToRemove));
-  };
+  const saveToSection = async (section: string, content: string, page?: number) => {
+    if (!content.trim()) return;
 
-  const saveNote = async () => {
-    if (!newNote.trim()) return;
-
-    const note: PaperNote = {
-      id: uuidv4(),
-      paperId,
-      content: newNote.trim(),
-      page: currentPage,
-      selection: selectedText,
-      tags,
-      createdAt: new Date().toISOString(),
-      pass: currentPass,
-    };
-
+    setSaving(true);
     try {
       const res = await fetch("/api/notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paperId, note }),
+        body: JSON.stringify({ paperId, section, content: content.trim(), page }),
       });
 
-      if (!res.ok) throw new Error("Failed to save note");
+      if (!res.ok) throw new Error("Failed to save");
 
-      setNotes([...notes, note]);
-      setNewNote("");
-      setTags([]);
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus("idle"), 2000);
+      // Refresh data
+      const refreshRes = await fetch(`/api/notes?paperId=${paperId}`);
+      const result = await refreshRes.json();
+      setData({
+        summary: result.summary || "",
+        insights: result.insights || [],
+        questions: result.questions || [],
+        highlights: result.highlights || [],
+        notes: result.notes || "",
+      });
+
+      setNewItem("");
+      setEditingField(null);
     } catch (error) {
-      console.error("Save note error:", error);
-      setSaveStatus("error");
+      console.error("Failed to save:", error);
+    } finally {
+      setSaving(false);
     }
   };
 
-  const saveToVault = async () => {
-    setIsSaving(true);
+  const updateSummary = async () => {
+    setSaving(true);
     try {
-      const res = await fetch("/api/notes", {
+      await fetch("/api/notes", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paperId }),
+        body: JSON.stringify({ paperId, section: "summary", content: data.summary }),
       });
-
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || "Failed to save to vault");
-      }
-
-      const data = await res.json();
-      alert(`Saved to vault: ${data.path}`);
+      setEditingField(null);
     } catch (error) {
-      console.error("Save to vault error:", error);
-      alert(error instanceof Error ? error.message : "Failed to save to vault");
+      console.error("Failed to update summary:", error);
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
-  const passNotes = notes.filter((n) => n.pass === currentPass);
-  const otherNotes = notes.filter((n) => n.pass !== currentPass);
+  const updateNotes = async () => {
+    setSaving(true);
+    try {
+      await fetch("/api/notes", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paperId, section: "notes", content: data.notes }),
+      });
+      setEditingField(null);
+    } catch (error) {
+      console.error("Failed to update notes:", error);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center bg-[var(--surface)] border-l border-[var(--border)]">
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--muted)]" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col bg-[var(--surface)] border-l border-[var(--border)]">
@@ -148,162 +180,299 @@ export function NotesPanel({
         <div className="flex items-center gap-2">
           <FileText className="h-4 w-4 text-[var(--accent)]" />
           <span className="font-medium text-[var(--text)]">Notes</span>
-          <Badge variant="outline" className="text-xs">
-            Pass {currentPass}
-          </Badge>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={saveToVault}
-          disabled={isSaving}
-          className="gap-1 text-xs"
-        >
-          {isSaving ? (
-            <Loader2 className="h-3 w-3 animate-spin" />
-          ) : (
-            <Save className="h-3 w-3" />
-          )}
-          Save to Vault
-        </Button>
+        <span className="text-xs text-[var(--muted)]">Page {currentPage}</span>
       </div>
 
-      {/* Note input */}
-      <div className="border-b border-[var(--border)] p-4">
-        <Textarea
-          value={newNote}
-          onChange={(e) => setNewNote(e.target.value)}
-          placeholder="Add a note... (quotes start with >, questions with ?)"
-          className="min-h-[80px] resize-none bg-[var(--background)] text-[var(--text)] text-sm"
-        />
-
-        {/* Tags */}
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Tag className="h-3 w-3 text-[var(--muted)]" />
-          {tags.map((tag) => (
-            <Badge
-              key={tag}
-              variant="secondary"
-              className="gap-1 text-xs cursor-pointer"
-              onClick={() => removeTag(tag)}
-            >
-              {tag}
-              <X className="h-2 w-2" />
-            </Badge>
-          ))}
-          <Input
-            value={tagInput}
-            onChange={(e) => setTagInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                addTag();
-              }
-            }}
-            placeholder="Add tag..."
-            className="h-6 w-20 text-xs"
-          />
-        </div>
-
-        <div className="mt-3 flex items-center justify-between">
-          <span className="text-xs text-[var(--muted)]">
-            Page {currentPage} · Pass {currentPass}
-          </span>
-          <Button
-            size="sm"
-            onClick={saveNote}
-            disabled={!newNote.trim()}
-            className="gap-1 bg-[var(--primary)]"
+      <ScrollArea className="flex-1">
+        <div className="p-4 space-y-4">
+          {/* Summary Section */}
+          <Section
+            title="Summary"
+            icon={<StickyNote className="h-4 w-4" />}
+            expanded={expandedSections.has("summary")}
+            onToggle={() => toggleSection("summary")}
           >
-            {saveStatus === "saved" ? (
-              <Check className="h-3 w-3" />
-            ) : (
-              <Plus className="h-3 w-3" />
-            )}
-            Add Note
-          </Button>
-        </div>
-      </div>
+            <Textarea
+              value={data.summary}
+              onChange={(e) => setData({ ...data, summary: e.target.value })}
+              onBlur={updateSummary}
+              placeholder="Write a 1-2 sentence summary..."
+              className="min-h-[60px] resize-none bg-[var(--background)] text-[var(--text)] text-sm"
+            />
+          </Section>
 
-      {/* Notes list */}
-      <ScrollArea className="flex-1 px-4">
-        <div className="py-4">
-          {/* Current pass notes */}
-          {passNotes.length > 0 && (
-            <div className="mb-4">
-              <h3 className="mb-2 text-xs font-medium text-[var(--muted)] uppercase">
-                Pass {currentPass} Notes
-              </h3>
-              <div className="space-y-2">
-                {passNotes.map((note) => (
-                  <NoteCard key={note.id} note={note} />
-                ))}
-              </div>
+          {/* Insights Section */}
+          <Section
+            title="Insights"
+            icon={<Lightbulb className="h-4 w-4" />}
+            count={data.insights.length}
+            expanded={expandedSections.has("insights")}
+            onToggle={() => toggleSection("insights")}
+          >
+            <div className="space-y-2">
+              {data.insights.map((insight, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start gap-2 p-2 rounded bg-[var(--background)] text-sm"
+                >
+                  <span className="text-[var(--accent)]">•</span>
+                  <span className="text-[var(--text)]">{insight}</span>
+                </div>
+              ))}
+              {editingField === "insight" ? (
+                <div className="flex gap-2">
+                  <Input
+                    value={newItem}
+                    onChange={(e) => setNewItem(e.target.value)}
+                    placeholder="Add an insight..."
+                    className="flex-1 text-sm"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        saveToSection("insight", newItem);
+                      } else if (e.key === "Escape") {
+                        setEditingField(null);
+                        setNewItem("");
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => saveToSection("insight", newItem)}
+                    disabled={saving || !newItem.trim()}
+                  >
+                    {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setEditingField(null);
+                      setNewItem("");
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start text-[var(--muted)] text-xs"
+                  onClick={() => setEditingField("insight")}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Add insight
+                </Button>
+              )}
             </div>
-          )}
+          </Section>
 
-          {/* Other notes */}
-          {otherNotes.length > 0 && (
-            <div>
-              <Separator className="my-4" />
-              <h3 className="mb-2 text-xs font-medium text-[var(--muted)] uppercase">
-                Other Notes
-              </h3>
-              <div className="space-y-2">
-                {otherNotes.map((note) => (
-                  <NoteCard key={note.id} note={note} />
-                ))}
-              </div>
+          {/* Questions Section */}
+          <Section
+            title="Questions"
+            icon={<HelpCircle className="h-4 w-4" />}
+            count={data.questions.length}
+            expanded={expandedSections.has("questions")}
+            onToggle={() => toggleSection("questions")}
+          >
+            <div className="space-y-2">
+              {data.questions.map((q, idx) => (
+                <div
+                  key={idx}
+                  className="flex items-start gap-2 p-2 rounded bg-[var(--background)] text-sm"
+                >
+                  <span className="text-[var(--accent)] mt-0.5">
+                    {q.answered ? "☑" : "☐"}
+                  </span>
+                  <span
+                    className={`text-[var(--text)] ${q.answered ? "line-through opacity-60" : ""}`}
+                  >
+                    {q.text}
+                  </span>
+                </div>
+              ))}
+              {editingField === "question" ? (
+                <div className="flex gap-2">
+                  <Input
+                    value={newItem}
+                    onChange={(e) => setNewItem(e.target.value)}
+                    placeholder="Add a question..."
+                    className="flex-1 text-sm"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        saveToSection("question", newItem);
+                      } else if (e.key === "Escape") {
+                        setEditingField(null);
+                        setNewItem("");
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    onClick={() => saveToSection("question", newItem)}
+                    disabled={saving || !newItem.trim()}
+                  >
+                    {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setEditingField(null);
+                      setNewItem("");
+                    }}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start text-[var(--muted)] text-xs"
+                  onClick={() => setEditingField("question")}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Add question
+                </Button>
+              )}
             </div>
-          )}
+          </Section>
 
-          {notes.length === 0 && (
-            <div className="text-center text-sm text-[var(--muted)]">
-              No notes yet. Start taking notes as you read!
+          {/* Highlights Section */}
+          <Section
+            title="Highlights"
+            icon={<Quote className="h-4 w-4" />}
+            count={data.highlights.length}
+            expanded={expandedSections.has("highlights")}
+            onToggle={() => toggleSection("highlights")}
+          >
+            <div className="space-y-2">
+              {data.highlights.map((h, idx) => (
+                <div
+                  key={idx}
+                  className="p-2 rounded bg-[var(--background)] text-sm border-l-2 border-[var(--accent)]"
+                >
+                  <blockquote className="text-[var(--text)] italic">
+                    "{h.text}"
+                  </blockquote>
+                  {h.page && (
+                    <span className="text-xs text-[var(--muted)]">p. {h.page}</span>
+                  )}
+                </div>
+              ))}
+              {editingField === "highlight" ? (
+                <div className="space-y-2">
+                  <Input
+                    value={newItem}
+                    onChange={(e) => setNewItem(e.target.value)}
+                    placeholder="Add a highlight..."
+                    className="flex-1 text-sm"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        saveToSection("highlight", newItem.replace(/^[""]|[""]$/g, ""), currentPage);
+                      } else if (e.key === "Escape") {
+                        setEditingField(null);
+                        setNewItem("");
+                      }
+                    }}
+                  />
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      size="sm"
+                      onClick={() => saveToSection("highlight", newItem.replace(/^[""]|[""]$/g, ""), currentPage)}
+                      disabled={saving || !newItem.trim()}
+                    >
+                      {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+                      Save (p. {currentPage})
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setEditingField(null);
+                        setNewItem("");
+                      }}
+                    >
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start text-[var(--muted)] text-xs"
+                  onClick={() => setEditingField("highlight")}
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Add highlight
+                </Button>
+              )}
             </div>
-          )}
+          </Section>
+
+          {/* Notes Section */}
+          <Section
+            title="Notes"
+            icon={<StickyNote className="h-4 w-4" />}
+            expanded={expandedSections.has("notes")}
+            onToggle={() => toggleSection("notes")}
+          >
+            <Textarea
+              value={data.notes}
+              onChange={(e) => setData({ ...data, notes: e.target.value })}
+              onBlur={updateNotes}
+              placeholder="Free-form notes..."
+              className="min-h-[100px] resize-none bg-[var(--background)] text-[var(--text)] text-sm"
+            />
+          </Section>
         </div>
       </ScrollArea>
     </div>
   );
 }
 
-function NoteCard({ note }: { note: PaperNote }) {
-  const isQuote =
-    note.content.startsWith(">") || note.content.startsWith('"');
-  const isQuestion = note.content.startsWith("?");
-
+// Collapsible section component
+function Section({
+  title,
+  icon,
+  count,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  count?: number;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <div
-      className={`rounded-lg p-3 text-sm ${
-        isQuote
-          ? "border-l-2 border-[var(--accent)] bg-[var(--background)]"
-          : isQuestion
-            ? "border-l-2 border-[var(--primary)] bg-[var(--background)]"
-            : "bg-[var(--background)]"
-      }`}
-    >
-      <div className="whitespace-pre-wrap text-[var(--text)]">
-        {note.content}
-      </div>
-      <div className="mt-2 flex items-center gap-2 text-xs text-[var(--muted)]">
-        {note.page && (
-          <span className="flex items-center gap-1">
-            <BookOpen className="h-3 w-3" />
-            p. {note.page}
-          </span>
+    <div className="border border-[var(--border)] rounded-lg overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center gap-2 px-3 py-2 bg-[var(--background)] hover:bg-[var(--surface)] transition-colors"
+      >
+        {expanded ? (
+          <ChevronDown className="h-4 w-4 text-[var(--muted)]" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-[var(--muted)]" />
         )}
-        <span>Pass {note.pass}</span>
-        {note.tags.length > 0 && (
-          <div className="flex gap-1">
-            {note.tags.map((tag) => (
-              <Badge key={tag} variant="outline" className="text-xs">
-                {tag}
-              </Badge>
-            ))}
-          </div>
+        <span className="text-[var(--accent)]">{icon}</span>
+        <span className="text-sm font-medium text-[var(--text)]">{title}</span>
+        {count !== undefined && count > 0 && (
+          <Badge variant="secondary" className="ml-auto text-xs">
+            {count}
+          </Badge>
         )}
-      </div>
+      </button>
+      {expanded && <div className="p-3 border-t border-[var(--border)]">{children}</div>}
     </div>
   );
 }

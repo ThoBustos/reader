@@ -8,7 +8,7 @@ import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import { useHotkeys, SHORTCUTS } from "@/components/primitives/useHotkeys";
 
 interface PDFViewerProps {
-  filePath: string;
+  paperId: string;
   currentPage: number;
   onPageChange: (page: number) => void;
   onTotalPagesChange: (total: number) => void;
@@ -16,7 +16,7 @@ interface PDFViewerProps {
 }
 
 export function PDFViewer({
-  filePath,
+  paperId,
   currentPage,
   onPageChange,
   onTotalPagesChange,
@@ -64,7 +64,7 @@ export function PDFViewer({
     <div className="h-full w-full overflow-hidden bg-[var(--surface)]">
       <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js">
         <Viewer
-          fileUrl={`/${filePath}`}
+          fileUrl={`/api/papers/${paperId}/pdf`}
           plugins={[defaultLayoutPluginInstance]}
           defaultScale={scale}
           onPageChange={(e) => onPageChange(e.currentPage + 1)}

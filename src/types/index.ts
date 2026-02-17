@@ -1,22 +1,54 @@
-// Paper types
+// Paper types - vault-first architecture
 export interface Paper {
-  id: string;
+  id: string;              // hash of PDF path
   title: string;
   authors: string[];
-  source?: string;
-  filePath: string;
-  dateAdded: string;
-  status: 'queued' | 'reading' | 'completed';
+  pdfPath: string;         // absolute path to PDF
+  sidecarPath: string;     // absolute path to .md
+  status: 'reading' | 'done';
   currentPage: number;
   totalPages: number;
-  pass: 1 | 2 | 3;
   tags: string[];
-  notes?: string;
+  dateAdded: string;
+  dateCompleted?: string;
+}
+
+// Sidecar types - mirror what's in vault/sidecar.ts for convenience
+export interface Frontmatter {
+  title: string;
+  authors: string[];
+  status: 'reading' | 'done';
+  current_page: number;
+  total_pages: number;
+  date_added: string;
+  date_completed?: string;
+  tags: string[];
+  pdf: string;
+}
+
+export interface Question {
+  text: string;
+  answered: boolean;
+}
+
+export interface Highlight {
+  text: string;
+  page?: number;
+}
+
+export interface Sidecar {
+  frontmatter: Frontmatter;
+  summary: string;
+  insights: string[];
+  questions: Question[];
+  highlights: Highlight[];
+  notes: string;
+  chat: ChatMessage[];
 }
 
 // Chat types
 export interface ChatMessage {
-  id: string;
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
   timestamp: string;
@@ -31,7 +63,7 @@ export interface ChatSession {
   messages: ChatMessage[];
 }
 
-// Note types
+// Note types - for API compatibility during transition
 export interface PaperNote {
   id: string;
   paperId: string;
@@ -40,7 +72,7 @@ export interface PaperNote {
   selection?: string;
   tags: string[];
   createdAt: string;
-  pass: 1 | 2 | 3;
+  type?: 'insight' | 'question' | 'highlight' | 'note';
 }
 
 // Settings types
@@ -55,9 +87,13 @@ export interface Settings {
   llmProvider: LLMProvider;
   geminiModel: GeminiModel;
   vaultPath: string;
+  papersPath: string;  // Path to vault/06_READING/Papers folder
   geminiApiKey?: string;
   claudeApiKey?: string;
 }
 
 // Context mode for AI
 export type ContextMode = 'full-document' | 'current-page' | 'selection';
+
+// Save to doc types
+export type SaveToDocType = 'insight' | 'question' | 'highlight' | 'note' | 'summary';

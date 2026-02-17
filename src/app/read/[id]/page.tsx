@@ -11,7 +11,6 @@ import { useLayout } from "@/components/primitives/LayoutProvider";
 import { useHotkeys, SHORTCUTS } from "@/components/primitives/useHotkeys";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Paper } from "@/types";
 import {
   ArrowLeft,
@@ -19,6 +18,7 @@ import {
   FileText,
   Check,
   Loader2,
+  BookOpen,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -71,31 +71,19 @@ export default function ReaderPage({ params }: ReaderPageProps) {
     return () => clearTimeout(timeout);
   }, [id, currentPage, totalPages, paper]);
 
-  // Keyboard shortcuts for pass switching
-  useHotkeys(SHORTCUTS.pass1, () => updatePass(1));
-  useHotkeys(SHORTCUTS.pass2, () => updatePass(2));
-  useHotkeys(SHORTCUTS.pass3, () => updatePass(3));
-  useHotkeys(SHORTCUTS.markComplete, () => markComplete());
-  useHotkeys(SHORTCUTS.toggleSidebar, () => setSidebarCollapsed(true));
+  // Keyboard shortcuts
+  useHotkeys(SHORTCUTS.markComplete, () => toggleStatus());
+  useHotkeys(SHORTCUTS.toggleSidebar, () => setSidebarCollapsed(!sidebarCollapsed));  // Cmd+B toggles
+  useHotkeys(SHORTCUTS.collapseSidebar, () => setSidebarCollapsed(true));
   useHotkeys(SHORTCUTS.expandSidebar, () => setSidebarCollapsed(false));
 
-  const updatePass = async (pass: 1 | 2 | 3) => {
+  const toggleStatus = async () => {
     if (!paper) return;
+    const newStatus = paper.status === "done" ? "reading" : "done";
     const res = await fetch(`/api/papers/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pass }),
-    });
-    const updated = await res.json();
-    setPaper(updated);
-  };
-
-  const markComplete = async () => {
-    if (!paper) return;
-    const res = await fetch(`/api/papers/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: "completed" }),
+      body: JSON.stringify({ status: newStatus }),
     });
     const updated = await res.json();
     setPaper(updated);
@@ -118,180 +106,170 @@ export default function ReaderPage({ params }: ReaderPageProps) {
   const sidebarWidth = layout === "focus" ? "w-80" : "w-96";
   const isLeft = layout === "sidebar-left";
 
+  const progressPercent = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0;
+
   return (
     <AppShell>
       <div className="flex h-full flex-col">
         {/* Header */}
         <div className="shrink-0 flex h-14 items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4">
-        <div className="flex items-center gap-4">
-          <Link href="/">
-            <Button variant="ghost" size="sm" className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Library
-            </Button>
-          </Link>
-          <div className="h-6 w-px bg-[var(--border)]" />
-          <div>
-            <h1 className="text-sm font-medium text-[var(--text)] line-clamp-1 max-w-md">
-              {paper.title}
-            </h1>
-            <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-              <span>
-                Page {currentPage}/{totalPages}
-              </span>
-              <span>·</span>
-              <span className="capitalize">{paper.status}</span>
+          <div className="flex items-center gap-4">
+            <Link href="/">
+              <Button variant="ghost" size="sm" className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Library
+              </Button>
+            </Link>
+            <div className="h-6 w-px bg-[var(--border)]" />
+            <div>
+              <h1 className="text-sm font-medium text-[var(--text)] line-clamp-1 max-w-md">
+                {paper.title}
+              </h1>
+              <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                <span>
+                  Page {currentPage}/{totalPages}
+                </span>
+                <span>·</span>
+                <span>{progressPercent}%</span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          {/* Pass selector */}
-          <Tabs
-            value={String(paper.pass)}
-            onValueChange={(v) => updatePass(Number(v) as 1 | 2 | 3)}
-          >
-            <TabsList className="h-8">
-              <TabsTrigger value="1" className="text-xs px-3">
-                Pass 1
-              </TabsTrigger>
-              <TabsTrigger value="2" className="text-xs px-3">
-                Pass 2
-              </TabsTrigger>
-              <TabsTrigger value="3" className="text-xs px-3">
-                Pass 3
-              </TabsTrigger>
-            </TabsList>
-          </Tabs>
+          <div className="flex items-center gap-2">
+            {/* Status indicator and toggle */}
+            {paper.status === "done" ? (
+              <Badge className="bg-green-500 gap-1">
+                <Check className="h-3 w-3" />
+                Done
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="gap-1">
+                <BookOpen className="h-3 w-3" />
+                Reading
+              </Badge>
+            )}
 
-          {paper.status !== "completed" && (
             <Button
               variant="outline"
               size="sm"
-              onClick={markComplete}
+              onClick={toggleStatus}
               className="gap-1"
             >
-              <Check className="h-3 w-3" />
-              Complete
+              {paper.status === "done" ? (
+                <>
+                  <BookOpen className="h-3 w-3" />
+                  Reopen
+                </>
+              ) : (
+                <>
+                  <Check className="h-3 w-3" />
+                  Mark Done
+                </>
+              )}
             </Button>
-          )}
-
-          {paper.status === "completed" && (
-            <Badge className="bg-green-500">Completed</Badge>
-          )}
+          </div>
         </div>
-      </div>
 
         {/* Main content */}
         <div className="flex flex-1 min-h-0">
-        {/* Sidebar (left or right based on layout) */}
-        {!sidebarCollapsed && isLeft && (
-          <div className={`flex flex-col ${sidebarWidth} shrink-0`}>
-            {/* Panel tabs */}
-            <div className="flex border-b border-[var(--border)] bg-[var(--surface)]">
-              <button
-                onClick={() => setActivePanel("chat")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm ${
-                  activePanel === "chat"
-                    ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
-                    : "text-[var(--muted)]"
-                }`}
-              >
-                <MessageSquare className="h-4 w-4" />
-                Chat
-              </button>
-              <button
-                onClick={() => setActivePanel("notes")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm ${
-                  activePanel === "notes"
-                    ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
-                    : "text-[var(--muted)]"
-                }`}
-              >
-                <FileText className="h-4 w-4" />
-                Notes
-              </button>
-            </div>
+          {/* Sidebar (left or right based on layout) */}
+          {!sidebarCollapsed && isLeft && (
+            <div className={`flex flex-col ${sidebarWidth} shrink-0`}>
+              {/* Panel tabs */}
+              <div className="flex border-b border-[var(--border)] bg-[var(--surface)]">
+                <button
+                  onClick={() => setActivePanel("chat")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm ${
+                    activePanel === "chat"
+                      ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
+                      : "text-[var(--muted)]"
+                  }`}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  Chat
+                </button>
+                <button
+                  onClick={() => setActivePanel("notes")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm ${
+                    activePanel === "notes"
+                      ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
+                      : "text-[var(--muted)]"
+                  }`}
+                >
+                  <FileText className="h-4 w-4" />
+                  Notes
+                </button>
+              </div>
 
-            {/* Panel content */}
-            <div className="flex-1 overflow-hidden">
-              {activePanel === "chat" ? (
-                <ChatPanel
-                  paperId={id}
-                  currentPage={currentPage}
-                  selectedText={selectedText}
-                />
-              ) : (
-                <NotesPanel
-                  paperId={id}
-                  currentPage={currentPage}
-                  currentPass={paper.pass}
-                  selectedText={selectedText}
-                />
-              )}
+              {/* Panel content */}
+              <div className="flex-1 overflow-hidden">
+                {activePanel === "chat" ? (
+                  <ChatPanel
+                    paperId={id}
+                    currentPage={currentPage}
+                    selectedText={selectedText}
+                  />
+                ) : (
+                  <NotesPanel paperId={id} currentPage={currentPage} />
+                )}
+              </div>
             </div>
+          )}
+
+          {/* PDF Viewer */}
+          <div className="flex-1 overflow-hidden">
+            <PDFViewer
+              paperId={id}
+              currentPage={currentPage}
+              onPageChange={setCurrentPage}
+              onTotalPagesChange={setTotalPages}
+              onTextSelect={handleTextSelect}
+            />
           </div>
-        )}
 
-        {/* PDF Viewer */}
-        <div className="flex-1 overflow-hidden">
-          <PDFViewer
-            filePath={paper.filePath}
-            currentPage={currentPage}
-            onPageChange={setCurrentPage}
-            onTotalPagesChange={setTotalPages}
-            onTextSelect={handleTextSelect}
-          />
-        </div>
+          {/* Sidebar (right) */}
+          {!sidebarCollapsed && !isLeft && (
+            <div className={`flex flex-col ${sidebarWidth} shrink-0`}>
+              {/* Panel tabs */}
+              <div className="flex border-b border-[var(--border)] bg-[var(--surface)]">
+                <button
+                  onClick={() => setActivePanel("chat")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm ${
+                    activePanel === "chat"
+                      ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
+                      : "text-[var(--muted)]"
+                  }`}
+                >
+                  <MessageSquare className="h-4 w-4" />
+                  Chat
+                </button>
+                <button
+                  onClick={() => setActivePanel("notes")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm ${
+                    activePanel === "notes"
+                      ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
+                      : "text-[var(--muted)]"
+                  }`}
+                >
+                  <FileText className="h-4 w-4" />
+                  Notes
+                </button>
+              </div>
 
-        {/* Sidebar (right) */}
-        {!sidebarCollapsed && !isLeft && (
-          <div className={`flex flex-col ${sidebarWidth} shrink-0`}>
-            {/* Panel tabs */}
-            <div className="flex border-b border-[var(--border)] bg-[var(--surface)]">
-              <button
-                onClick={() => setActivePanel("chat")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm ${
-                  activePanel === "chat"
-                    ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
-                    : "text-[var(--muted)]"
-                }`}
-              >
-                <MessageSquare className="h-4 w-4" />
-                Chat
-              </button>
-              <button
-                onClick={() => setActivePanel("notes")}
-                className={`flex-1 flex items-center justify-center gap-2 py-2 text-sm ${
-                  activePanel === "notes"
-                    ? "text-[var(--text)] border-b-2 border-[var(--primary)]"
-                    : "text-[var(--muted)]"
-                }`}
-              >
-                <FileText className="h-4 w-4" />
-                Notes
-              </button>
+              {/* Panel content */}
+              <div className="flex-1 overflow-hidden">
+                {activePanel === "chat" ? (
+                  <ChatPanel
+                    paperId={id}
+                    currentPage={currentPage}
+                    selectedText={selectedText}
+                  />
+                ) : (
+                  <NotesPanel paperId={id} currentPage={currentPage} />
+                )}
+              </div>
             </div>
-
-            {/* Panel content */}
-            <div className="flex-1 overflow-hidden">
-              {activePanel === "chat" ? (
-                <ChatPanel
-                  paperId={id}
-                  currentPage={currentPage}
-                  selectedText={selectedText}
-                />
-              ) : (
-                <NotesPanel
-                  paperId={id}
-                  currentPage={currentPage}
-                  currentPass={paper.pass}
-                  selectedText={selectedText}
-                />
-              )}
-            </div>
-          </div>
-        )}
+          )}
         </div>
 
         <CommandPalette />

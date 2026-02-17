@@ -1,47 +1,53 @@
 import { ChatMessage, ChatSession } from '@/types';
-import fs from 'fs';
-import path from 'path';
+import { getSettings } from './settings';
+import { getPaper } from './papers';
+import {
+  parseSidecar,
+  appendToSection,
+  type ChatMessage as SidecarChatMessage,
+} from '@/lib/vault';
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const CHATS_DIR = path.join(DATA_DIR, 'chats');
-
-function ensureChatDir() {
-  if (!fs.existsSync(CHATS_DIR)) {
-    fs.mkdirSync(CHATS_DIR, { recursive: true });
-  }
-}
-
-function getChatFilePath(paperId: string): string {
-  return path.join(CHATS_DIR, `${paperId}.json`);
-}
-
+// Get chat session for a paper (from sidecar ## Chat section)
 export function getChatSession(paperId: string): ChatSession {
-  ensureChatDir();
-  const filePath = getChatFilePath(paperId);
-
-  if (!fs.existsSync(filePath)) {
+  const paper = getPaper(paperId);
+  if (!paper) {
     return { paperId, messages: [] };
   }
 
   try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+    const sidecar = parseSidecar(paper.sidecarPath);
+    // Convert sidecar chat messages to ChatMessage type
+    const messages: ChatMessage[] = sidecar.chat.map((m, idx) => ({
+      id: `${paperId}-${idx}`,
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+    }));
+
+    return { paperId, messages };
   } catch {
     return { paperId, messages: [] };
   }
 }
 
+// Save a chat message to the sidecar
 export function saveChatMessage(paperId: string, message: ChatMessage): ChatSession {
-  ensureChatDir();
-  const session = getChatSession(paperId);
-  session.messages.push(message);
+  const paper = getPaper(paperId);
+  if (!paper) {
+    return { paperId, messages: [] };
+  }
 
-  fs.writeFileSync(getChatFilePath(paperId), JSON.stringify(session, null, 2));
-  return session;
+  // Format the message for the sidecar
+  const formatted = `**${message.role}** (${message.timestamp}):\n${message.content}\n`;
+  appendToSection(paper.sidecarPath, 'Chat', formatted);
+
+  // Return the updated session
+  return getChatSession(paperId);
 }
 
+// Clear chat session (not typically needed with vault-first, but kept for compatibility)
 export function clearChatSession(paperId: string): void {
-  const filePath = getChatFilePath(paperId);
-  if (fs.existsSync(filePath)) {
-    fs.unlinkSync(filePath);
-  }
+  // In vault-first, we don't clear chat - it's part of the permanent note
+  // If really needed, would replace the ## Chat section content
+  console.warn('clearChatSession: Chat is now stored in sidecar. Consider keeping history.');
 }

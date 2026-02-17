@@ -16,10 +16,10 @@ const themes = {
   ink: {
     "--background": "#1A1926",
     "--surface": "#2D2B4A",
-    "--primary": "#4E4B93",
+    "--primary": "#8B88C8",
     "--accent": "#F89151",
-    "--text": "#F2E7C9",
-    "--muted": "#6B68A8",
+    "--text": "#FFFFFF",
+    "--muted": "#CFCDE8",
     "--border": "#3D3B5C",
   },
   paper: {

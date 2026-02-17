@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ChatMessage, ContextMode } from "@/types";
+import { ChatMessage, ContextMode, SaveToDocType } from "@/types";
 import { QUICK_PROMPTS } from "@/lib/llm/prompts";
 import { useHotkeys, SHORTCUTS } from "@/components/primitives/useHotkeys";
 import ReactMarkdown from "react-markdown";
@@ -18,6 +18,9 @@ import {
   BookOpen,
   MousePointer2,
   Loader2,
+  Lightbulb,
+  HelpCircle,
+  StickyNote,
 } from "lucide-react";
 
 interface ChatPanelProps {
@@ -26,6 +29,21 @@ interface ChatPanelProps {
   selectedText?: string;
   onCopyToNotes?: (content: string) => void;
 }
+
+// Natural language save commands
+const SAVE_COMMANDS: Array<{
+  pattern: RegExp;
+  type: SaveToDocType;
+  extractContent?: boolean;
+}> = [
+  { pattern: /^save (that |this )?(as )?insight/i, type: "insight" },
+  { pattern: /^save (that |this )?(as )?question/i, type: "question" },
+  { pattern: /^save (that |this )?(to )?notes?/i, type: "note" },
+  { pattern: /^add question:?\s*(.+)/i, type: "question", extractContent: true },
+  { pattern: /^highlight:?\s*(.+)/i, type: "highlight", extractContent: true },
+  { pattern: /^add insight:?\s*(.+)/i, type: "insight", extractContent: true },
+  { pattern: /^add note:?\s*(.+)/i, type: "note", extractContent: true },
+];
 
 export function ChatPanel({
   paperId,
@@ -38,6 +56,8 @@ export function ChatPanel({
   const [isLoading, setIsLoading] = useState(false);
   const [contextMode, setContextMode] = useState<ContextMode>("full-document");
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [savedId, setSavedId] = useState<string | null>(null);
+  const [saveType, setSaveType] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -84,8 +104,85 @@ export function ChatPanel({
     onCopyToNotes?.(content);
   };
 
+  // Save content to sidecar
+  const saveToDoc = async (
+    type: SaveToDocType,
+    content: string,
+    messageId: string
+  ) => {
+    try {
+      const res = await fetch("/api/notes/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paperId,
+          type,
+          content,
+          page: currentPage,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to save");
+
+      setSavedId(messageId);
+      setSaveType(type);
+      setTimeout(() => {
+        setSavedId(null);
+        setSaveType(null);
+      }, 2000);
+    } catch (error) {
+      console.error("Save to doc error:", error);
+    }
+  };
+
+  // Detect natural language save commands
+  const detectSaveCommand = (
+    text: string
+  ): { type: SaveToDocType; content?: string } | null => {
+    for (const cmd of SAVE_COMMANDS) {
+      const match = text.match(cmd.pattern);
+      if (match) {
+        if (cmd.extractContent && match[1]) {
+          return { type: cmd.type, content: match[1].trim() };
+        }
+        // Use last assistant message content
+        const lastAssistant = [...messages]
+          .reverse()
+          .find((m) => m.role === "assistant");
+        if (lastAssistant) {
+          return { type: cmd.type, content: lastAssistant.content };
+        }
+      }
+    }
+    return null;
+  };
+
   const sendMessage = async (messageText: string = input) => {
     if (!messageText.trim() || isLoading) return;
+
+    // Check for save commands
+    const saveCmd = detectSaveCommand(messageText);
+    if (saveCmd && saveCmd.content) {
+      await saveToDoc(saveCmd.type, saveCmd.content, "command");
+      setInput("");
+      // Add confirmation message
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "user",
+          content: messageText,
+          timestamp: new Date().toISOString(),
+        },
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: `✓ Saved to ${saveCmd.type}s section.`,
+          timestamp: new Date().toISOString(),
+        },
+      ]);
+      return;
+    }
 
     const userMessage: ChatMessage = {
       id: crypto.randomUUID(),
@@ -232,14 +329,21 @@ export function ChatPanel({
       >
         <div className="space-y-4 py-4">
           {messages.length === 0 && (
-            <div className="text-center text-sm text-[var(--muted)]">
-              Ask questions about this paper. The AI can see the full document
-              including figures and tables.
+            <div className="text-center text-sm text-[var(--muted)] py-4">
+              <p className="font-medium text-[var(--text)]">Ask questions about this paper</p>
+              <div className="mt-4 text-left space-y-2 mx-auto max-w-xs">
+                <p className="text-xs"><span className="text-[var(--accent)]">Pass 1:</span> "Summarize in 3-5 bullets"</p>
+                <p className="text-xs"><span className="text-[var(--accent)]">Pass 2:</span> Select text → "Explain this"</p>
+                <p className="text-xs"><span className="text-[var(--accent)]">Pass 3:</span> "What are the limitations?"</p>
+              </div>
+              <p className="mt-4 text-xs opacity-75">
+                Say "save that insight" to keep notes
+              </p>
             </div>
           )}
-          {messages.map((message) => (
+          {messages.map((message, index) => (
             <div
-              key={message.id}
+              key={message.id || `msg-${index}`}
               className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
@@ -256,11 +360,10 @@ export function ChatPanel({
                   </div>
                 )}
                 {message.role === "assistant" ? (
-                  <div className="prose prose-sm prose-neutral dark:prose-invert max-w-none">
+                  <div className="prose prose-sm max-w-none text-[var(--text)] [&_*]:text-[var(--text)] [&_strong]:text-[var(--text)] [&_a]:text-[var(--primary)]">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        // Custom styling for markdown elements
                         p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
                         ul: ({ children }) => <ul className="mb-2 ml-4 list-disc space-y-1">{children}</ul>,
                         ol: ({ children }) => <ol className="mb-2 ml-4 list-decimal space-y-1">{children}</ol>,
@@ -308,25 +411,88 @@ export function ChatPanel({
                 ) : (
                   <div className="text-sm whitespace-pre-wrap">{message.content}</div>
                 )}
-                {message.role === "assistant" && message.content && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="mt-2 h-6 gap-1 text-xs opacity-50 hover:opacity-100"
-                    onClick={() => copyToClipboard(message.content, message.id)}
-                  >
-                    {copiedId === message.id ? (
-                      <>
-                        <Check className="h-3 w-3" />
-                        Copied
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="h-3 w-3" />
-                        Copy
-                      </>
-                    )}
-                  </Button>
+
+                {/* Action buttons for assistant messages */}
+                {message.role === "assistant" && message.content && !message.content.startsWith("✓") && (
+                  <div className="mt-2 flex flex-wrap gap-1 border-t border-[var(--border)]/30 pt-2">
+                    {/* Copy button */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 gap-1 text-xs opacity-50 hover:opacity-100"
+                      onClick={() => copyToClipboard(message.content, message.id || `msg-${index}`)}
+                    >
+                      {copiedId === (message.id || `msg-${index}`) ? (
+                        <>
+                          <Check className="h-3 w-3" />
+                          Copied
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="h-3 w-3" />
+                          Copy
+                        </>
+                      )}
+                    </Button>
+
+                    {/* Save to doc buttons */}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 gap-1 text-xs opacity-50 hover:opacity-100"
+                      onClick={() => saveToDoc("insight", message.content, message.id || `msg-${index}`)}
+                    >
+                      {savedId === (message.id || `msg-${index}`) && saveType === "insight" ? (
+                        <>
+                          <Check className="h-3 w-3 text-green-500" />
+                          Saved
+                        </>
+                      ) : (
+                        <>
+                          <Lightbulb className="h-3 w-3" />
+                          + Insight
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 gap-1 text-xs opacity-50 hover:opacity-100"
+                      onClick={() => saveToDoc("question", message.content, message.id || `msg-${index}`)}
+                    >
+                      {savedId === (message.id || `msg-${index}`) && saveType === "question" ? (
+                        <>
+                          <Check className="h-3 w-3 text-green-500" />
+                          Saved
+                        </>
+                      ) : (
+                        <>
+                          <HelpCircle className="h-3 w-3" />
+                          + Question
+                        </>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-6 gap-1 text-xs opacity-50 hover:opacity-100"
+                      onClick={() => saveToDoc("note", message.content, message.id || `msg-${index}`)}
+                    >
+                      {savedId === (message.id || `msg-${index}`) && saveType === "note" ? (
+                        <>
+                          <Check className="h-3 w-3 text-green-500" />
+                          Saved
+                        </>
+                      ) : (
+                        <>
+                          <StickyNote className="h-3 w-3" />
+                          + Note
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>

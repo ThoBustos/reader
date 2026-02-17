@@ -12,12 +12,12 @@ import {
 import Link from "next/link";
 import {
   BookOpen,
+  Library,
   Settings,
   Sun,
   Moon,
   FileText,
-  PanelLeftClose,
-  PanelLeft,
+  HelpCircle,
 } from "lucide-react";
 
 interface AppShellProps {
@@ -57,7 +57,7 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
               <TooltipTrigger asChild>
                 <Link href="/">
                   <Button variant="ghost" size="icon" className="text-[var(--muted)] hover:text-[var(--text)]">
-                    <BookOpen className="h-5 w-5" />
+                    <Library className="h-5 w-5" />
                   </Button>
                 </Link>
               </TooltipTrigger>
@@ -66,6 +66,17 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
           </div>
 
           <div className="flex flex-col items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link href="/guide">
+                  <Button variant="ghost" size="icon" className="text-[var(--muted)] hover:text-[var(--text)]">
+                    <HelpCircle className="h-5 w-5" />
+                  </Button>
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right">Guide</TooltipContent>
+            </Tooltip>
+
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

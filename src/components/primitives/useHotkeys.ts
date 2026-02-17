@@ -29,7 +29,8 @@ export const SHORTCUTS = {
   prevPage: "k",
   firstPage: "g g",
   lastPage: "shift+g",
-  toggleSidebar: "h",
+  toggleSidebar: "mod+b",  // Cmd+B to toggle sidebar (like Cursor)
+  collapseSidebar: "h",
   expandSidebar: "l",
 
   // Command palette
@@ -48,10 +49,7 @@ export const SHORTCUTS = {
   toggleNotes: "mod+shift+n",
 
   // Reading
-  pass1: "1",
-  pass2: "2",
-  pass3: "3",
-  markComplete: "m",
+  markComplete: "m",  // Toggle reading/done status
   zenMode: "z",
 
   // Library

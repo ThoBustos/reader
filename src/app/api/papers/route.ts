@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAllPapers, savePaper, deletePaper } from "@/lib/store/papers";
-import { Paper } from "@/types";
-import { v4 as uuidv4 } from "uuid";
 
 export async function GET() {
   try {
     const papers = getAllPapers();
     return NextResponse.json(papers);
   } catch (error) {
+    console.error("Failed to get papers:", error);
     return NextResponse.json({ error: "Failed to get papers" }, { status: 500 });
   }
 }
@@ -15,25 +14,24 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
+    const { sourcePath, title, authors, tags } = body;
 
-    const paper: Paper = {
-      id: uuidv4(),
-      title: body.title || "Untitled Paper",
-      authors: body.authors || [],
-      source: body.source || "",
-      filePath: body.filePath,
-      dateAdded: new Date().toISOString(),
-      status: "queued",
-      currentPage: 1,
-      totalPages: body.totalPages || 1,
-      pass: 1,
-      tags: body.tags || [],
-    };
+    console.log("POST /api/papers:", { sourcePath, title, authors, tags });
 
-    const saved = savePaper(paper);
-    return NextResponse.json(saved);
+    if (!sourcePath || !title) {
+      return NextResponse.json(
+        { error: "Source path and title required" },
+        { status: 400 }
+      );
+    }
+
+    const paper = savePaper(sourcePath, title, authors || [], tags || []);
+    console.log("Paper created:", paper);
+    return NextResponse.json(paper);
   } catch (error) {
-    return NextResponse.json({ error: "Failed to save paper" }, { status: 500 });
+    console.error("Failed to save paper:", error);
+    const message = error instanceof Error ? error.message : "Unknown error";
+    return NextResponse.json({ error: `Failed to save paper: ${message}` }, { status: 500 });
   }
 }
 
@@ -53,6 +51,7 @@ export async function DELETE(request: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    console.error("Failed to delete paper:", error);
     return NextResponse.json({ error: "Failed to delete paper" }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -24,7 +24,6 @@ import {
   Search,
   BookOpen,
   CheckCircle,
-  Clock,
   MoreVertical,
   Trash2,
   FileText,
@@ -40,9 +39,7 @@ interface LibraryViewProps {
 export function LibraryView({ initialPapers = [] }: LibraryViewProps) {
   const [papers, setPapers] = useState<Paper[]>(initialPapers);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<"all" | "queued" | "reading" | "completed">(
-    "all"
-  );
+  const [filter, setFilter] = useState<"all" | "reading" | "done">("all");
   const [isDragging, setIsDragging] = useState(false);
   const router = useRouter();
 
@@ -89,15 +86,15 @@ export function LibraryView({ initialPapers = [] }: LibraryViewProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          sourcePath: filePath,
           title: originalName.replace(/\.pdf$/i, ""),
-          filePath,
         }),
       });
 
       if (!paperRes.ok) throw new Error("Failed to create paper entry");
 
       const paper = await paperRes.json();
-      setPapers([...papers, paper]);
+      setPapers([paper, ...papers]);
     } catch (error) {
       console.error("Upload error:", error);
       alert(error instanceof Error ? error.message : "Upload failed");
@@ -153,10 +150,14 @@ export function LibraryView({ initialPapers = [] }: LibraryViewProps) {
     return matchesSearch && matchesFilter;
   });
 
-  const statusIcon = {
-    queued: <Clock className="h-4 w-4 text-[var(--muted)]" />,
+  const statusIcon: Record<"reading" | "done", React.ReactNode> = {
     reading: <BookOpen className="h-4 w-4 text-[var(--accent)]" />,
-    completed: <CheckCircle className="h-4 w-4 text-green-500" />,
+    done: <CheckCircle className="h-4 w-4 text-green-500" />,
+  };
+
+  const statusLabel: Record<"reading" | "done", string> = {
+    reading: "Reading",
+    done: "Done",
   };
 
   return (
@@ -164,7 +165,7 @@ export function LibraryView({ initialPapers = [] }: LibraryViewProps) {
       {/* Header */}
       <div className="border-b border-[var(--border)] px-6 py-4">
         <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-[var(--text)]">Reading Queue</h1>
+          <h1 className="text-2xl font-bold text-[var(--text)]">Library</h1>
           <label>
             <input
               type="file"
@@ -194,7 +195,7 @@ export function LibraryView({ initialPapers = [] }: LibraryViewProps) {
             />
           </div>
           <div className="flex gap-2">
-            {(["all", "queued", "reading", "completed"] as const).map((f) => (
+            {(["all", "reading", "done"] as const).map((f) => (
               <Button
                 key={f}
                 variant={filter === f ? "default" : "outline"}
@@ -202,7 +203,7 @@ export function LibraryView({ initialPapers = [] }: LibraryViewProps) {
                 onClick={() => setFilter(f)}
                 className={filter === f ? "bg-[var(--primary)]" : ""}
               >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+                {f === "all" ? "All" : statusLabel[f]}
               </Button>
             ))}
           </div>
@@ -234,14 +235,23 @@ export function LibraryView({ initialPapers = [] }: LibraryViewProps) {
 
         {filteredPapers.length === 0 ? (
           <div className="flex h-full items-center justify-center">
-            <div className="text-center">
+            <div className="text-center max-w-md">
               <FileText className="mx-auto h-12 w-12 text-[var(--muted)]" />
               <h3 className="mt-4 text-lg font-medium text-[var(--text)]">
                 No papers yet
               </h3>
               <p className="mt-2 text-[var(--muted)]">
-                Add a PDF to start reading
+                Drag & drop a PDF or click "Add Paper" to get started
               </p>
+              <div className="mt-6 text-left space-y-2 bg-[var(--surface)] rounded-lg p-4">
+                <p className="text-sm font-medium text-[var(--text)]">Quick Start:</p>
+                <p className="text-sm text-[var(--muted)]">1. Add a PDF paper</p>
+                <p className="text-sm text-[var(--muted)]">2. Use AI to summarize & explain</p>
+                <p className="text-sm text-[var(--muted)]">3. Save insights as you read</p>
+                <a href="/guide" className="inline-block mt-2 text-sm text-[var(--primary)] hover:underline">
+                  Read the full guide →
+                </a>
+              </div>
             </div>
           </div>
         ) : (
@@ -256,8 +266,13 @@ export function LibraryView({ initialPapers = [] }: LibraryViewProps) {
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
                         {statusIcon[paper.status]}
-                        <Badge variant="outline" className="text-xs">
-                          Pass {paper.pass}
+                        <Badge
+                          variant={paper.status === "done" ? "default" : "outline"}
+                          className={`text-xs ${
+                            paper.status === "done" ? "bg-green-500" : ""
+                          }`}
+                        >
+                          {statusLabel[paper.status]}
                         </Badge>
                       </div>
                       <DropdownMenu>
@@ -305,15 +320,25 @@ export function LibraryView({ initialPapers = [] }: LibraryViewProps) {
                         {new Date(paper.dateAdded).toLocaleDateString()}
                       </span>
                     </div>
-                    {/* Progress bar */}
-                    <div className="mt-2 h-1 w-full rounded-full bg-[var(--border)]">
-                      <div
-                        className="h-full rounded-full bg-[var(--accent)]"
-                        style={{
-                          width: `${(paper.currentPage / (paper.totalPages || 1)) * 100}%`,
-                        }}
-                      />
-                    </div>
+                    {/* Tags */}
+                    {paper.tags.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {paper.tags.slice(0, 3).map((tag) => (
+                          <Badge
+                            key={tag}
+                            variant="secondary"
+                            className="text-xs"
+                          >
+                            {tag}
+                          </Badge>
+                        ))}
+                        {paper.tags.length > 3 && (
+                          <Badge variant="secondary" className="text-xs">
+                            +{paper.tags.length - 3}
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                   </CardContent>
                 </Link>
               </Card>

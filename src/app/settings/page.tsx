@@ -32,6 +32,7 @@ import {
   Save,
   Check,
   Loader2,
+  Info,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -43,6 +44,7 @@ export default function SettingsPage() {
 
   // Form state
   const [vaultPath, setVaultPath] = useState("");
+  const [papersPath, setPapersPath] = useState("");
   const [geminiApiKey, setGeminiApiKey] = useState("");
   const [claudeApiKey, setClaudeApiKey] = useState("");
   const [llmProvider, setLlmProvider] = useState<LLMProvider>("gemini");
@@ -55,11 +57,19 @@ export default function SettingsPage() {
       .then((data) => {
         setSettings(data);
         setVaultPath(data.vaultPath || "");
+        setPapersPath(data.papersPath || "");
         setLlmProvider(data.llmProvider || "gemini");
         setGeminiModel(data.geminiModel || "gemini-3-flash-preview");
       })
       .catch(console.error);
   }, []);
+
+  // Auto-derive papersPath when vaultPath changes
+  useEffect(() => {
+    if (vaultPath && !papersPath) {
+      setPapersPath(`${vaultPath}/06_READING/Papers`);
+    }
+  }, [vaultPath, papersPath]);
 
   const saveSettings = async () => {
     setIsSaving(true);
@@ -70,6 +80,7 @@ export default function SettingsPage() {
         llmProvider,
         geminiModel,
         vaultPath,
+        papersPath,
       };
 
       // Only include API keys if they were changed (not masked)
@@ -100,6 +111,7 @@ export default function SettingsPage() {
       { key: "j / k", action: "Next / Previous page" },
       { key: "g g", action: "Go to first page" },
       { key: "G", action: "Go to last page" },
+      { key: "⌘ B", action: "Toggle AI sidebar" },
       { key: "h / l", action: "Collapse / Expand sidebar" },
     ]},
     { category: "Command Palette", items: [
@@ -114,12 +126,9 @@ export default function SettingsPage() {
     ]},
     { category: "Notes", items: [
       { key: "n", action: "New note from selection" },
-      { key: "⌘ S", action: "Save note to vault" },
     ]},
     { category: "Reading", items: [
-      { key: "1 / 2 / 3", action: "Switch to Pass 1/2/3" },
-      { key: "m", action: "Mark paper complete" },
-      { key: "z", action: "Toggle zen mode" },
+      { key: "m", action: "Mark paper done/reading" },
     ]},
   ];
 
@@ -133,6 +142,62 @@ export default function SettingsPage() {
           </p>
 
           <div className="mt-8 space-y-6">
+            {/* Vault Integration - moved to top for vault-first architecture */}
+            <Card className="bg-[var(--surface)] border-[var(--border)]">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-[var(--text)]">
+                  <FolderOpen className="h-5 w-5" />
+                  Papers Location
+                </CardTitle>
+                <CardDescription>
+                  Your PDFs and notes are stored directly in your vault.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg bg-[var(--background)] p-3 flex items-start gap-2">
+                  <Info className="h-4 w-4 text-[var(--accent)] mt-0.5 shrink-0" />
+                  <div className="text-xs text-[var(--muted)]">
+                    <p className="font-medium text-[var(--text)]">Vault-First Architecture</p>
+                    <p className="mt-1">
+                      PDFs are stored in your vault. Each PDF gets a companion .md file
+                      with your notes, insights, questions, and chat history.
+                      Changes sync immediately with Obsidian.
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-[var(--text)]">
+                    Vault Path (optional)
+                  </label>
+                  <Input
+                    value={vaultPath}
+                    onChange={(e) => setVaultPath(e.target.value)}
+                    placeholder="/Users/you/Documents/my-vault"
+                    className="mt-1"
+                  />
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Root path to your Obsidian vault.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium text-[var(--text)]">
+                    Papers Folder
+                  </label>
+                  <Input
+                    value={papersPath}
+                    onChange={(e) => setPapersPath(e.target.value)}
+                    placeholder="/Users/you/Documents/my-vault/06_READING/Papers"
+                    className="mt-1"
+                  />
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Folder where PDFs and sidecar notes are stored. Can be anywhere.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Appearance */}
             <Card className="bg-[var(--surface)] border-[var(--border)]">
               <CardHeader>
@@ -163,18 +228,20 @@ export default function SettingsPage() {
 
                 <div>
                   <label className="text-sm font-medium text-[var(--text)]">
-                    Layout
+                    Sidebar Position
                   </label>
                   <Select value={layout} onValueChange={(v) => setLayout(v as Layout)}>
                     <SelectTrigger className="mt-1">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="sidebar-right">Sidebar Right</SelectItem>
-                      <SelectItem value="sidebar-left">Sidebar Left</SelectItem>
-                      <SelectItem value="focus">Focus Mode (Narrow Sidebar)</SelectItem>
+                      <SelectItem value="sidebar-right">Right</SelectItem>
+                      <SelectItem value="sidebar-left">Left</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="mt-1 text-xs text-[var(--muted)]">
+                    Toggle sidebar with ⌘B
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -306,36 +373,6 @@ export default function SettingsPage() {
                     >
                       Anthropic Console
                     </a>
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Vault Integration */}
-            <Card className="bg-[var(--surface)] border-[var(--border)]">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-[var(--text)]">
-                  <FolderOpen className="h-5 w-5" />
-                  Obsidian Vault
-                </CardTitle>
-                <CardDescription>
-                  Connect to your Obsidian vault to save structured notes.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div>
-                  <label className="text-sm font-medium text-[var(--text)]">
-                    Vault Path
-                  </label>
-                  <Input
-                    value={vaultPath}
-                    onChange={(e) => setVaultPath(e.target.value)}
-                    placeholder="/Users/you/Documents/my-vault"
-                    className="mt-1"
-                  />
-                  <p className="mt-1 text-xs text-[var(--muted)]">
-                    Full path to your Obsidian vault. Notes will be saved to
-                    06_READING/.
                   </p>
                 </div>
               </CardContent>

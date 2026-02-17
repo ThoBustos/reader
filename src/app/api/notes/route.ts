@@ -1,24 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSettings } from "@/lib/store/settings";
-import { getPaper, getAllPapers } from "@/lib/store/papers";
-import { saveToVault, updateReadingBacklog } from "@/lib/vault/writer";
-import { PaperNote } from "@/types";
-import fs from "fs";
-import path from "path";
+import { getPaper } from "@/lib/store/papers";
+import {
+  parseSidecar,
+  appendToSection,
+  updateSection,
+} from "@/lib/vault";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const NOTES_DIR = path.join(DATA_DIR, "notes");
-
-function ensureNotesDir() {
-  if (!fs.existsSync(NOTES_DIR)) {
-    fs.mkdirSync(NOTES_DIR, { recursive: true });
-  }
-}
-
-function getNotesFilePath(paperId: string): string {
-  return path.join(NOTES_DIR, `${paperId}.json`);
-}
-
+// GET - Get all notes for a paper from sidecar
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -28,71 +16,35 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Paper ID required" }, { status: 400 });
     }
 
-    ensureNotesDir();
-    const filePath = getNotesFilePath(paperId);
-
-    if (!fs.existsSync(filePath)) {
-      return NextResponse.json({ notes: [] });
+    const paper = getPaper(paperId);
+    if (!paper) {
+      return NextResponse.json({ error: "Paper not found" }, { status: 404 });
     }
 
-    const notes = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    return NextResponse.json({ notes });
+    const sidecar = parseSidecar(paper.sidecarPath);
+
+    return NextResponse.json({
+      summary: sidecar.summary,
+      insights: sidecar.insights,
+      questions: sidecar.questions,
+      highlights: sidecar.highlights,
+      notes: sidecar.notes,
+    });
   } catch (error) {
+    console.error("Failed to get notes:", error);
     return NextResponse.json({ error: "Failed to get notes" }, { status: 500 });
   }
 }
 
+// POST - Add content to a specific section
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { paperId, note } = body;
+    const { paperId, section, content, page } = body;
 
-    if (!paperId || !note) {
+    if (!paperId || !section || !content) {
       return NextResponse.json(
-        { error: "Paper ID and note required" },
-        { status: 400 }
-      );
-    }
-
-    ensureNotesDir();
-    const filePath = getNotesFilePath(paperId);
-
-    let notes: PaperNote[] = [];
-    if (fs.existsSync(filePath)) {
-      notes = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-    }
-
-    notes.push(note);
-    fs.writeFileSync(filePath, JSON.stringify(notes, null, 2));
-
-    return NextResponse.json({ success: true, note });
-  } catch (error) {
-    return NextResponse.json({ error: "Failed to save note" }, { status: 500 });
-  }
-}
-
-// Save to vault endpoint
-export async function PUT(request: NextRequest) {
-  try {
-    const body = await request.json();
-    const { paperId } = body;
-
-    if (!paperId) {
-      return NextResponse.json({ error: "Paper ID required" }, { status: 400 });
-    }
-
-    const settings = getSettings();
-    if (!settings.vaultPath) {
-      return NextResponse.json(
-        { error: "Vault path not configured. Please set it in settings." },
-        { status: 400 }
-      );
-    }
-
-    // Verify vault path exists
-    if (!fs.existsSync(settings.vaultPath)) {
-      return NextResponse.json(
-        { error: "Vault path does not exist" },
+        { error: "Paper ID, section, and content required" },
         { status: 400 }
       );
     }
@@ -102,27 +54,86 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Paper not found" }, { status: 404 });
     }
 
-    // Get notes for this paper
-    ensureNotesDir();
-    const notesFilePath = getNotesFilePath(paperId);
-    let notes: PaperNote[] = [];
-    if (fs.existsSync(notesFilePath)) {
-      notes = JSON.parse(fs.readFileSync(notesFilePath, "utf-8"));
+    // Format content based on section type
+    let formatted: string;
+    switch (section) {
+      case "insight":
+      case "insights":
+        formatted = `- ${content}`;
+        appendToSection(paper.sidecarPath, "Insights", formatted);
+        break;
+      case "question":
+      case "questions":
+        formatted = `- [ ] ${content}`;
+        appendToSection(paper.sidecarPath, "Questions", formatted);
+        break;
+      case "highlight":
+      case "highlights":
+        formatted = page ? `> "${content}" (p. ${page})` : `> "${content}"`;
+        appendToSection(paper.sidecarPath, "Highlights", formatted);
+        break;
+      case "note":
+      case "notes":
+        appendToSection(paper.sidecarPath, "Notes", content);
+        break;
+      case "summary":
+        updateSection(paper.sidecarPath, "Summary", content);
+        break;
+      default:
+        return NextResponse.json(
+          { error: `Invalid section: ${section}` },
+          { status: 400 }
+        );
     }
 
-    // Save to vault
-    const savedPath = await saveToVault(settings.vaultPath, paper, notes);
-
-    // Update reading backlog
-    const allPapers = getAllPapers();
-    await updateReadingBacklog(settings.vaultPath, allPapers);
-
-    return NextResponse.json({ success: true, path: savedPath });
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Save to vault error:", error);
-    return NextResponse.json(
-      { error: "Failed to save to vault" },
-      { status: 500 }
-    );
+    console.error("Failed to save note:", error);
+    return NextResponse.json({ error: "Failed to save note" }, { status: 500 });
+  }
+}
+
+// PUT - Update an entire section (replace content)
+export async function PUT(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { paperId, section, content } = body;
+
+    if (!paperId || !section) {
+      return NextResponse.json(
+        { error: "Paper ID and section required" },
+        { status: 400 }
+      );
+    }
+
+    const paper = getPaper(paperId);
+    if (!paper) {
+      return NextResponse.json({ error: "Paper not found" }, { status: 404 });
+    }
+
+    // Map section names to proper casing
+    const sectionMap: Record<string, "Summary" | "Insights" | "Questions" | "Highlights" | "Notes" | "Chat"> = {
+      summary: "Summary",
+      insights: "Insights",
+      questions: "Questions",
+      highlights: "Highlights",
+      notes: "Notes",
+      chat: "Chat",
+    };
+
+    const sidecarSection = sectionMap[section.toLowerCase()];
+    if (!sidecarSection) {
+      return NextResponse.json(
+        { error: `Invalid section: ${section}` },
+        { status: 400 }
+      );
+    }
+
+    updateSection(paper.sidecarPath, sidecarSection, content || "");
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Failed to update section:", error);
+    return NextResponse.json({ error: "Failed to update section" }, { status: 500 });
   }
 }

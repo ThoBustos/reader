@@ -43,6 +43,8 @@ next-env.d.ts
 # App data
 /data/
 /public/papers/
+/.uploads/
+/papers/
 
 # Config with secrets
 reader.config.json
