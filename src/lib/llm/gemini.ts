@@ -19,11 +19,17 @@ export async function uploadPaper(pdfPath: string): Promise<string> {
   return base64Data;
 }
 
+export interface ImageInput {
+  data: string;      // base64 encoded
+  mimeType: string;  // image/png, image/jpeg, etc.
+}
+
 export async function askGemini(
   pdfBase64: string,
   question: string,
   context?: { page?: number; selection?: string },
-  modelName: string = "gemini-3-flash-preview"
+  modelName: string = "gemini-3-flash-preview",
+  images?: ImageInput[]
 ): Promise<ReadableStream<Uint8Array>> {
   if (!genAI) throw new Error("Gemini not initialized");
 
@@ -37,6 +43,7 @@ export async function askGemini(
     prompt = `The user is currently on page ${context.page} of the paper.\n\nQuestion: ${question}`;
   }
 
+  // Build parts array: PDF first, then any images, then the text prompt
   const parts: Part[] = [
     {
       inlineData: {
@@ -44,8 +51,26 @@ export async function askGemini(
         data: pdfBase64,
       },
     },
-    { text: prompt },
   ];
+
+  // Add any attached images
+  if (images && images.length > 0) {
+    for (const img of images) {
+      // Validate MIME type - default to png if missing/invalid
+      const mimeType = img.mimeType && img.mimeType.startsWith("image/")
+        ? img.mimeType
+        : "image/png";
+      parts.push({
+        inlineData: {
+          mimeType,
+          data: img.data,
+        },
+      });
+    }
+  }
+
+  // Add the text prompt last
+  parts.push({ text: prompt });
 
   const result = await model.generateContentStream(parts);
 

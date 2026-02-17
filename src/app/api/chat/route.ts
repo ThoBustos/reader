@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSettings } from "@/lib/store/settings";
 import { getPaper } from "@/lib/store/papers";
-import { saveChatMessage, getChatSession } from "@/lib/store/chat";
+import { saveChatMessage, getChatSession, clearChatSession } from "@/lib/store/chat";
 import { initGemini, askGemini, uploadPaper } from "@/lib/llm/gemini";
 import { initClaude, askClaude } from "@/lib/llm/claude";
 import { v4 as uuidv4 } from "uuid";
+import { ImageAttachment } from "@/types";
 
 // Simple PDF text extraction (fallback for Claude)
 async function extractPdfText(filePath: string): Promise<string> {
@@ -15,7 +16,12 @@ async function extractPdfText(filePath: string): Promise<string> {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { paperId, message, context } = body;
+    const { paperId, message, context, images } = body as {
+      paperId: string;
+      message: string;
+      context?: { page?: number; selection?: string };
+      images?: ImageAttachment[];
+    };
 
     if (!paperId || !message) {
       return NextResponse.json(
@@ -45,7 +51,7 @@ export async function POST(request: NextRequest) {
     if (settings.llmProvider === "gemini" && settings.geminiApiKey) {
       initGemini(settings.geminiApiKey);
       const pdfBase64 = await uploadPaper(paper.pdfPath);
-      stream = await askGemini(pdfBase64, message, context, settings.geminiModel);
+      stream = await askGemini(pdfBase64, message, context, settings.geminiModel, images);
     } else if (settings.llmProvider === "claude" && settings.claudeApiKey) {
       initClaude(settings.claudeApiKey);
       const pdfText = await extractPdfText(paper.pdfPath);
@@ -115,6 +121,35 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: "Failed to get chat history" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const paperId = searchParams.get("paperId");
+
+    if (!paperId) {
+      return NextResponse.json(
+        { error: "Paper ID required" },
+        { status: 400 }
+      );
+    }
+
+    const success = clearChatSession(paperId);
+    if (!success) {
+      return NextResponse.json(
+        { error: "Failed to clear chat" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json(
+      { error: "Failed to clear chat" },
       { status: 500 }
     );
   }

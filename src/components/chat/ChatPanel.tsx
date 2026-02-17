@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { ChatMessage, ContextMode, SaveToDocType } from "@/types";
+import { ChatMessage, ContextMode, SaveToDocType, ImageAttachment } from "@/types";
 import { QUICK_PROMPTS } from "@/lib/llm/prompts";
 import { useHotkeys, SHORTCUTS } from "@/components/primitives/useHotkeys";
 import ReactMarkdown from "react-markdown";
@@ -21,6 +21,9 @@ import {
   Lightbulb,
   HelpCircle,
   StickyNote,
+  Trash2,
+  X,
+  Image as ImageIcon,
 } from "lucide-react";
 
 interface ChatPanelProps {
@@ -58,6 +61,7 @@ export function ChatPanel({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [saveType, setSaveType] = useState<string | null>(null);
+  const [attachedImages, setAttachedImages] = useState<ImageAttachment[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -96,6 +100,66 @@ export function ChatPanel({
     const currentIndex = modes.indexOf(contextMode);
     setContextMode(modes[(currentIndex + 1) % modes.length]);
   });
+
+  // Convert blob to base64
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64 = reader.result as string;
+        // Remove the data:image/xxx;base64, prefix
+        const base64Data = base64.split(",")[1];
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // Handle paste event for images
+  const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (const item of Array.from(items)) {
+      // Check if it's an image (including files that might be images)
+      if (item.type.startsWith("image/") || item.kind === "file") {
+        const blob = item.getAsFile();
+        if (blob && (blob.type.startsWith("image/") || item.type.startsWith("image/"))) {
+          e.preventDefault();
+          const base64 = await blobToBase64(blob);
+          // Use blob.type first (more reliable), fallback to item.type, then default to png
+          const mimeType = blob.type || item.type || "image/png";
+          // Validate it's actually an image MIME type
+          if (mimeType.startsWith("image/")) {
+            setAttachedImages((prev) => [
+              ...prev,
+              { data: base64, mimeType },
+            ]);
+          }
+        }
+      }
+    }
+  }, []);
+
+  // Remove attached image
+  const removeImage = (index: number) => {
+    setAttachedImages((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Clear chat history
+  const clearChat = async () => {
+    if (!confirm("Clear all chat history for this paper?")) return;
+
+    try {
+      const res = await fetch(`/api/chat?paperId=${paperId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error("Failed to clear chat:", error);
+    }
+  };
 
   const copyToClipboard = async (content: string, messageId: string) => {
     await navigator.clipboard.writeText(content);
@@ -158,7 +222,7 @@ export function ChatPanel({
   };
 
   const sendMessage = async (messageText: string = input) => {
-    if (!messageText.trim() || isLoading) return;
+    if ((!messageText.trim() && attachedImages.length === 0) || isLoading) return;
 
     // Check for save commands
     const saveCmd = detectSaveCommand(messageText);
@@ -199,6 +263,8 @@ export function ChatPanel({
 
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    const imagesToSend = [...attachedImages];
+    setAttachedImages([]); // Clear after capturing
     setIsLoading(true);
 
     try {
@@ -209,6 +275,7 @@ export function ChatPanel({
           paperId,
           message: messageText,
           context: userMessage.context,
+          images: imagesToSend.length > 0 ? imagesToSend : undefined,
         }),
       });
 
@@ -286,22 +353,35 @@ export function ChatPanel({
           <Sparkles className="h-4 w-4 text-[var(--accent)]" />
           <span className="font-medium text-[var(--text)]">AI Assistant</span>
         </div>
-        <Badge
-          variant="outline"
-          className="cursor-pointer gap-1 text-xs"
-          onClick={() => {
-            const modes: ContextMode[] = [
-              "full-document",
-              "current-page",
-              "selection",
-            ];
-            const currentIndex = modes.indexOf(contextMode);
-            setContextMode(modes[(currentIndex + 1) % modes.length]);
-          }}
-        >
-          {contextIcon[contextMode]}
-          {contextLabel[contextMode]}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge
+            variant="outline"
+            className="cursor-pointer gap-1 text-xs"
+            onClick={() => {
+              const modes: ContextMode[] = [
+                "full-document",
+                "current-page",
+                "selection",
+              ];
+              const currentIndex = modes.indexOf(contextMode);
+              setContextMode(modes[(currentIndex + 1) % modes.length]);
+            }}
+          >
+            {contextIcon[contextMode]}
+            {contextLabel[contextMode]}
+          </Badge>
+          {messages.length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 w-6 p-0 text-[var(--muted)] hover:text-red-500"
+              onClick={clearChat}
+              title="Clear chat"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Quick prompts */}
@@ -517,24 +597,60 @@ export function ChatPanel({
             {selectedText.length > 100 ? "..." : ""}&quot;
           </div>
         )}
+
+        {/* Attached images preview */}
+        {attachedImages.length > 0 && (
+          <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+            {attachedImages.map((img, i) => (
+              <div
+                key={i}
+                className="relative shrink-0 h-16 w-16 rounded-lg overflow-hidden border border-[var(--border)] bg-[var(--background)]"
+              >
+                <img
+                  src={`data:${img.mimeType};base64,${img.data}`}
+                  alt={`Attachment ${i + 1}`}
+                  className="h-full w-full object-cover"
+                />
+                <button
+                  onClick={() => removeImage(i)}
+                  className="absolute -top-1 -right-1 h-5 w-5 rounded-full bg-red-500 text-white flex items-center justify-center hover:bg-red-600"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
         <div className="flex gap-2">
           <Textarea
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask about this paper... (⌘+Enter to send)"
+            onPaste={handlePaste}
+            placeholder="Ask about this paper... (⌘+V to paste images)"
             className="min-h-[60px] resize-none bg-[var(--background)] text-[var(--text)]"
             disabled={isLoading}
           />
           <Button
             onClick={() => sendMessage()}
-            disabled={!input.trim() || isLoading}
+            disabled={(!input.trim() && attachedImages.length === 0) || isLoading}
             className="bg-[var(--primary)] hover:bg-[var(--primary)]/90"
           >
             <Send className="h-4 w-4" />
           </Button>
         </div>
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          {attachedImages.length > 0 ? (
+            <span className="flex items-center gap-1">
+              <ImageIcon className="h-3 w-3" />
+              {attachedImages.length} image{attachedImages.length > 1 ? "s" : ""} attached
+            </span>
+          ) : (
+            "Paste screenshots with ⌘+V"
+          )}
+        </p>
       </div>
     </div>
   );

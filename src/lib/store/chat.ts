@@ -4,6 +4,7 @@ import { getPaper } from './papers';
 import {
   parseSidecar,
   appendToSection,
+  updateSection,
   type ChatMessage as SidecarChatMessage,
 } from '@/lib/vault';
 
@@ -45,9 +46,16 @@ export function saveChatMessage(paperId: string, message: ChatMessage): ChatSess
   return getChatSession(paperId);
 }
 
-// Clear chat session (not typically needed with vault-first, but kept for compatibility)
-export function clearChatSession(paperId: string): void {
-  // In vault-first, we don't clear chat - it's part of the permanent note
-  // If really needed, would replace the ## Chat section content
-  console.warn('clearChatSession: Chat is now stored in sidecar. Consider keeping history.');
+// Clear chat session - replaces ## Chat section with empty content
+export function clearChatSession(paperId: string): boolean {
+  const paper = getPaper(paperId);
+  if (!paper) return false;
+
+  try {
+    updateSection(paper.sidecarPath, 'Chat', '');
+    return true;
+  } catch (error) {
+    console.error('Failed to clear chat:', error);
+    return false;
+  }
 }

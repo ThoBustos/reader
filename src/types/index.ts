@@ -46,6 +46,12 @@ export interface Sidecar {
   chat: ChatMessage[];
 }
 
+// Image attachment for chat
+export interface ImageAttachment {
+  data: string;      // base64 encoded
+  mimeType: string;  // image/png, image/jpeg, etc.
+}
+
 // Chat types
 export interface ChatMessage {
   id?: string;
@@ -56,6 +62,7 @@ export interface ChatMessage {
     page?: number;
     selection?: string;
   };
+  images?: ImageAttachment[];  // For multimodal messages
 }
 
 export interface ChatSession {
