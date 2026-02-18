@@ -51,7 +51,22 @@ export async function POST(request: NextRequest) {
     if (settings.llmProvider === "gemini" && settings.geminiApiKey) {
       initGemini(settings.geminiApiKey);
       const pdfBase64 = await uploadPaper(paper.pdfPath);
-      stream = await askGemini(pdfBase64, message, context, settings.geminiModel, images);
+
+      // Get existing chat history for context
+      const existingSession = getChatSession(paperId);
+      const chatHistory = existingSession.messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
+      stream = await askGemini(
+        pdfBase64,
+        message,
+        context,
+        settings.geminiModel,
+        images,
+        chatHistory
+      );
     } else if (settings.llmProvider === "claude" && settings.claudeApiKey) {
       initClaude(settings.claudeApiKey);
       const pdfText = await extractPdfText(paper.pdfPath);
