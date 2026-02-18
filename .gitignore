@@ -48,3 +48,6 @@ next-env.d.ts
 
 # Config with secrets
 reader.config.json
+
+# Excalidraw MCP logs
+excalidraw.log

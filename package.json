@@ -18,6 +18,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "gray-matter": "^4.0.3",
+    "katex": "^0.16.28",
     "lucide-react": "^0.564.0",
     "next": "16.1.6",
     "pdfjs-dist": "^3.11.174",
@@ -26,7 +27,9 @@
     "react-dom": "19.2.3",
     "react-hotkeys-hook": "^5.2.4",
     "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "tailwind-merge": "^3.4.1",
     "uuid": "^13.0.0"
   },

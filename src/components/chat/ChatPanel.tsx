@@ -9,6 +9,9 @@ import { QUICK_PROMPTS } from "@/lib/llm/prompts";
 import { useHotkeys, SHORTCUTS } from "@/components/primitives/useHotkeys";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import {
   Send,
   Sparkles,
@@ -442,7 +445,8 @@ export function ChatPanel({
                 {message.role === "assistant" ? (
                   <div className="prose prose-sm max-w-none text-[var(--text)] [&_*]:text-[var(--text)] [&_strong]:text-[var(--text)] [&_a]:text-[var(--primary)]">
                     <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
+                      remarkPlugins={[remarkGfm, remarkMath]}
+                      rehypePlugins={[rehypeKatex]}
                       components={{
                         p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
                         ul: ({ children }) => <ul className="mb-2 ml-4 list-disc space-y-1">{children}</ul>,
