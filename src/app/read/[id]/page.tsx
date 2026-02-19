@@ -19,8 +19,10 @@ import {
   Check,
   Loader2,
   BookOpen,
+  BrainCircuit,
 } from "lucide-react";
 import Link from "next/link";
+import { QuizModal } from "@/components/quiz";
 
 interface ReaderPageProps {
   params: Promise<{ id: string }>;
@@ -34,6 +36,7 @@ export default function ReaderPage({ params }: ReaderPageProps) {
   const [totalPages, setTotalPages] = useState(1);
   const [selectedText, setSelectedText] = useState<string | undefined>();
   const [activePanel, setActivePanel] = useState<"chat" | "notes">("chat");
+  const [quizOpen, setQuizOpen] = useState(false);
   const { layout, sidebarCollapsed, setSidebarCollapsed } = useLayout();
   const router = useRouter();
 
@@ -167,6 +170,16 @@ export default function ReaderPage({ params }: ReaderPageProps) {
                 </>
               )}
             </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setQuizOpen(true)}
+              className="gap-1"
+            >
+              <BrainCircuit className="h-3 w-3" />
+              Quiz me
+            </Button>
           </div>
         </div>
 
@@ -174,7 +187,7 @@ export default function ReaderPage({ params }: ReaderPageProps) {
         <div className="flex flex-1 min-h-0">
           {/* Sidebar (left or right based on layout) */}
           {!sidebarCollapsed && isLeft && (
-            <div className={`flex flex-col ${sidebarWidth} shrink-0`}>
+            <div className={`flex flex-col ${sidebarWidth} shrink-0 h-full overflow-hidden`}>
               {/* Panel tabs */}
               <div className="flex border-b border-[var(--border)] bg-[var(--surface)]">
                 <button
@@ -229,7 +242,7 @@ export default function ReaderPage({ params }: ReaderPageProps) {
 
           {/* Sidebar (right) */}
           {!sidebarCollapsed && !isLeft && (
-            <div className={`flex flex-col ${sidebarWidth} shrink-0`}>
+            <div className={`flex flex-col ${sidebarWidth} shrink-0 h-full overflow-hidden`}>
               {/* Panel tabs */}
               <div className="flex border-b border-[var(--border)] bg-[var(--surface)]">
                 <button
@@ -273,6 +286,16 @@ export default function ReaderPage({ params }: ReaderPageProps) {
         </div>
 
         <CommandPalette />
+
+        {/* Quiz Modal */}
+        <QuizModal
+          open={quizOpen}
+          onOpenChange={setQuizOpen}
+          paperId={id}
+          paperTitle={paper.title}
+          currentPage={currentPage}
+          totalPages={totalPages}
+        />
       </div>
     </AppShell>
   );

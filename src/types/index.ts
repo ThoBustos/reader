@@ -104,3 +104,72 @@ export type ContextMode = 'full-document' | 'current-page' | 'selection';
 
 // Save to doc types
 export type SaveToDocType = 'insight' | 'question' | 'highlight' | 'note' | 'summary';
+
+// Quiz types
+export type QuizQuestionType = 'multiple-choice' | 'open-ended';
+export type QuizScope = 'full' | 'pages' | 'selection';
+export type QuizDifficulty = 'skim' | 'read' | 'study' | 'master';
+
+export interface MultipleChoiceQuestion {
+  type: 'multiple-choice';
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+  source?: string;
+}
+
+export interface OpenEndedQuestion {
+  type: 'open-ended';
+  question: string;
+  expectedAnswer: string;
+  keyPoints: string[];
+  explanation: string;
+  source?: string;
+}
+
+export type QuizQuestion = MultipleChoiceQuestion | OpenEndedQuestion;
+
+export interface QuizConfig {
+  questionCount: number;
+  questionTypes: QuizQuestionType[];
+  difficulty: QuizDifficulty;
+  scope: QuizScope;
+  scopeDetail?: { start: number; end: number } | string;
+}
+
+export interface QuizAnswer {
+  questionIndex: number;
+  userAnswer: number | string;
+  isCorrect: boolean;
+  evaluation?: string;
+  skipped?: boolean;
+}
+
+export interface QuizSession {
+  id: string;
+  paperId: string;
+  paperTitle: string;
+  startedAt: string;
+  completedAt?: string;
+  config: QuizConfig;
+  questions: QuizQuestion[];
+  answers: QuizAnswer[];
+  score?: { correct: number; total: number };
+}
+
+export interface QuizStats {
+  attempts: number;
+  best_score: number;
+  last_attempt: string;
+}
+
+export interface QuizHistoryEntry {
+  date: string;
+  score: { correct: number; total: number };
+  missed: {
+    question: string;
+    userAnswer: string;
+    correctAnswer: string;
+  }[];
+}
