@@ -11,13 +11,13 @@ import {
 } from "@/components/ui/tooltip";
 import Link from "next/link";
 import {
-  BookOpen,
   Library,
   Settings,
   Sun,
   Moon,
   FileText,
   HelpCircle,
+  BrainCircuit,
 } from "lucide-react";
 
 interface AppShellProps {
@@ -47,8 +47,8 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
       {showNav && (
         <nav className="flex w-14 flex-col items-center border-r border-[var(--border)] bg-[var(--surface)] py-4">
           <Link href="/" className="mb-8">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--primary)] text-white">
-              <BookOpen className="h-5 w-5" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg overflow-hidden">
+              <img src="/logo.png" alt="Reader" className="h-10 w-10 object-contain" />
             </div>
           </Link>
 
@@ -62,6 +62,17 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
                 </Link>
               </TooltipTrigger>
               <TooltipContent side="right">Library</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Link href="/quizzes">
+                  <Button variant="ghost" size="icon" className="text-[var(--muted)] hover:text-[var(--text)]">
+                    <BrainCircuit className="h-5 w-5" />
+                  </Button>
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right">Quizzes</TooltipContent>
             </Tooltip>
           </div>
 
